@@ -1,0 +1,26 @@
+{
+  "title": "Chunks",
+  "version": "0.0.1",
+  "debugMode": true,
+  "window": {
+    "width": 1920,
+    "height": 1080,
+    "vsync": true,
+    "fullscreen": true,
+    "resizable": true,
+    "minwidth": 1920,
+    "minheight": 1080
+  },
+  "volume": {
+    "master": 1.0,
+    "effects": 0.75,
+    "music": 0.5
+  },
+  "camera": {
+    "scale": 1,
+    "targetScale": 1,
+    "minScale": 0.1,
+    "maxScale": 2,
+    "moveSpeed": 500
+  }
+}
