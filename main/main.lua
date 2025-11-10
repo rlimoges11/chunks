@@ -7,7 +7,6 @@ local Perlin = require("lib.modules.perlin")
 local Input = require("lib.modules.input")
 local UI = require("lib.modules.ui")
 
--- ==================== ENGINE TABLE & STATE ====================
 local engine = {
     gameData = {},
     chunks = {},
@@ -19,7 +18,12 @@ local engine = {
     showWorldGenWindow = false,
     seedInputText = "",
     statusText = "",
-    isClearing = false  -- NEW: Prevents generation during clear
+    isClearing = false,
+    -- NEW ZOOM PROPERTIES
+    zoom = 1.0,
+    minZoom = 1,
+    maxZoom = 4.0,
+    zoomSpeed = 1.1
 }
 
 if not lfs.getInfo(engine.assetsDir) then
@@ -29,12 +33,13 @@ end
 
 local function getTerrainColor(noiseValue)
     local n = noiseValue + 0.5
-    if n < 0.1 then return 0.35,0.35,0.35
-    elseif n < 0.35 then return 0.5, 0.4, 0.25
-    elseif n < 0.4 then return 0.2, 0.15, 0.1
-    elseif n > 0.9 then return 0.35,0.35,0.35
-    elseif n > 0.85 then return  0.5,0.5,0.5
-    else return 0,0,0
+    if n < 0.05 then return 0.5,0.5,0.5
+    elseif n < 0.1 then return 0.35,0.35,0.35
+    elseif n < 0.2 then return 0.2, 0.15, 0.1
+    elseif n < 0.3 then return 0.5, 0.4, 0.25
+    elseif n > 0.85 then return 0.5,0.5,0.5
+    elseif n > 0.7 then return 0.35,0.35,0.35
+    else return 0.025,0.025,0.025
     end
 end
 
@@ -84,7 +89,7 @@ function engine.generateCellImage(i, j, size)
     for py = 0, size-1 do
         for px = 0, size-1 do
             local wx, wy = i * size + px, j * size + py
-            local noise = engine.perlin:octaveNoise(wx, wy, 4, 0.5)
+            local noise = engine.perlin:octaveNoise(wx, wy, 4, 0.65)
             local r, g, b = getTerrainColor(noise)
             imgData:setPixel(px, py, r, g, b, 1)
         end
@@ -123,15 +128,16 @@ end
 function engine.init()
     engine.camera = Camera(0, 0)
     engine.camera.smoother = function() return 1 end
-    engine.camera:zoom(1)
+    engine.zoom = 1.0  -- Reset zoom
+    engine.camera:zoomTo(engine.zoom)  -- Apply zoom
 
     local seed = engine.gameData.worldSeed or os.time()
     engine.perlin = Perlin:new(seed)
     engine.seedInputText = tostring(seed)
     engine.camSpeed = engine.gameData.camera.moveSpeed or 300
     engine.isClearing = false
-    engine.statusText = "Press F5 to open world manager"
-    print("Engine initialized - Seed:", seed)
+    engine.statusText = "Press F5 to open world manager | Scroll to zoom"
+    print("Engine initialized - Seed:", seed, "Zoom:", engine.zoom)
 end
 
 -- ==================== LOVE2D CALLBACKS ====================
@@ -248,4 +254,13 @@ function love.keypressed(key)
             love.event.quit()
         end
     end
+end
+
+function love.wheelmoved(x, y)
+    if y > 0 then
+        engine.zoom = math.min(engine.zoom * engine.zoomSpeed, engine.maxZoom)
+    elseif y < 0 then
+        engine.zoom = math.max(engine.zoom / engine.zoomSpeed, engine.minZoom)
+    end
+    engine.camera:zoomTo(engine.zoom)
 end
