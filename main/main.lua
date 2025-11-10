@@ -19,7 +19,7 @@ local engine = {
     showWorldGenWindow = false,
     seedInputText = "",
     statusText = "",
-    mouseDebug = ""
+    isClearing = false  -- NEW: Prevents generation during clear
 }
 
 if not lfs.getInfo(engine.assetsDir) then
@@ -38,9 +38,12 @@ local function getTerrainColor(noiseValue)
     end
 end
 
--- World management
+-- World management (atomic clearing)
 function engine.clearWorld()
-    engine.images = {}
+    engine.isClearing = true  -- Block generation
+    engine.images = {}  -- Clear memory
+
+    -- Clear disk files
     local items = lfs.getDirectoryItems(engine.assetsDir)
     local count = 0
     for _, item in ipairs(items) do
@@ -49,7 +52,9 @@ function engine.clearWorld()
             if success then count = count + 1 end
         end
     end
-    engine.statusText = string.format("Cleared %d files", count)
+
+    engine.isClearing = false  -- Allow generation again
+    engine.statusText = string.format("Cleared %d files - ready for new generation", count)
     print(engine.statusText)
 end
 
@@ -57,18 +62,22 @@ function engine.applyNewSeed(newSeed)
     local seed = tonumber(newSeed) or math.random(1, 999999)
     engine.gameData.worldSeed = seed
     engine.perlin = Perlin:new(seed)
-    engine.clearWorld()
+    engine.clearWorld()  -- Clears AND blocks generation
     engine.showWorldGenWindow = false
-    engine.statusText = string.format("NEW SEED: %d", seed)
-    print("Applied seed:", seed)
+    engine.statusText = string.format("NEW SEED APPLIED: %d - World cleared", seed)
+    print("Applied seed and cleared world:", seed)
 end
 
 function engine.generateRandomSeed()
     return math.random(1, 999999)
 end
 
--- Image generation
 function engine.generateCellImage(i, j, size)
+    if engine.isClearing then
+        print("GENERATION BLOCKED: Clearing in progress")
+        return nil
+    end
+
     print(string.format("Generating cell %d,%d...", i, j))
     local imgData = love.image.newImageData(size, size)
 
@@ -93,6 +102,8 @@ function engine.generateCellImage(i, j, size)
 end
 
 function engine.getCellImage(i, j, size)
+    if engine.isClearing then return nil end  -- Block during clear
+
     if not engine.images[i] then engine.images[i] = {} end
     if engine.images[i][j] then return engine.images[i][j] end
 
@@ -118,7 +129,8 @@ function engine.init()
     engine.perlin = Perlin:new(seed)
     engine.seedInputText = tostring(seed)
     engine.camSpeed = engine.gameData.camera.moveSpeed or 300
-    engine.statusText = "Press F5 to open world generator"
+    engine.isClearing = false
+    engine.statusText = "Press F5 to open world manager"
     print("Engine initialized - Seed:", seed)
 end
 
@@ -184,6 +196,12 @@ function love.draw()
     end
     engine.camera:detach()
 
+    -- Clear status if clearing is done
+    if engine.isClearing then
+        love.graphics.setColor(1, 0, 0, 1)
+        love.graphics.print("CLEARING WORLD...", 10, 130)
+    end
+
     -- DEBUG VISUALIZATION
     love.graphics.setColor(1, 1, 0, 1)
     love.graphics.print(string.format("SEED: %d", engine.gameData.worldSeed or 0), 10, 10)
@@ -215,6 +233,7 @@ end
 function love.keypressed(key)
     Input.keypressed(key)
 
+    -- INSTANT F5 HANDLING
     if key == "f5" then
         engine.showWorldGenWindow = not engine.showWorldGenWindow
         engine.seedInputText = tostring(engine.gameData.worldSeed or engine.generateRandomSeed())

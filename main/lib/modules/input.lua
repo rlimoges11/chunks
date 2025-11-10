@@ -5,21 +5,23 @@ Input.keysPressed = {}
 function Input.keypressed(key)
     Input.keysPressed[key] = true
 
-    -- WASD support
-    if key == "a" then Input.keysPressed["left"] = true end
-    if key == "d" then Input.keysPressed["right"] = true end
-    if key == "w" then Input.keysPressed["up"] = true end
-    if key == "s" then Input.keysPressed["down"] = true end
+    -- WASD support (maps to arrow keys)
+    if key == "a" then Input.keysPressed["left"] = true
+    elseif key == "d" then Input.keysPressed["right"] = true
+    elseif key == "w" then Input.keysPressed["up"] = true
+    elseif key == "s" then Input.keysPressed["down"] = true
+    end
 end
 
 function Input.keyreleased(key)
     Input.keysPressed[key] = nil
 
     -- WASD support
-    if key == "a" then Input.keysPressed["left"] = nil end
-    if key == "d" then Input.keysPressed["right"] = nil end
-    if key == "w" then Input.keysPressed["up"] = nil end
-    if key == "s" then Input.keysPressed["down"] = nil end
+    if key == "a" then Input.keysPressed["left"] = nil
+    elseif key == "d" then Input.keysPressed["right"] = nil
+    elseif key == "w" then Input.keysPressed["up"] = nil
+    elseif key == "s" then Input.keysPressed["down"] = nil
+    end
 end
 
 function Input.getMovement()

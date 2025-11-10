@@ -5,11 +5,11 @@ function UI.drawWorldGenWindow(engine, screenW, screenH)
 
     if engine.showWorldGenWindow then
         SLAB.BeginWindow('WorldGenWindow', {
-            Title = "Generate New World",
+            Title = "World Manager",
             X = screenW/2 - 200,
-            Y = screenH/2 - 100,
+            Y = screenH/2 - 120,
             W = 400,
-            H = 200,
+            H = 240,
             AutoSizeWindow = false,
             Border = 20
         })
@@ -29,7 +29,17 @@ function UI.drawWorldGenWindow(engine, screenW, screenH)
 
         SLAB.Separator()
 
-        if SLAB.Button('Generate') then
+        -- Clear World button
+        if SLAB.Button('Clear World') then
+            engine.clearWorld()
+            engine.statusText = "World cleared - no generation until complete"
+            print("Clear World button clicked")
+        end
+
+        SLAB.Separator()
+
+        -- Generate button (will apply seed AND clear)
+        if SLAB.Button('Generate New World') then
             engine.applyNewSeed(engine.seedInputText)
         end
 
@@ -48,7 +58,7 @@ function UI.drawMenuBar(engine)
 
     if SLAB.BeginMainMenuBar() then
         if SLAB.BeginMenu("File") then
-            if SLAB.MenuItem("Generate New World") then
+            if SLAB.MenuItem("World Manager") then
                 engine.showWorldGenWindow = true
                 engine.seedInputText = tostring(engine.gameData.worldSeed or engine.generateRandomSeed())
             end
