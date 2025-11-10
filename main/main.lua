@@ -28,13 +28,13 @@ if not lfs.getInfo(engine.assetsDir) then
 end
 
 local function getTerrainColor(noiseValue)
-    local n = (noiseValue + 1) / 2
-    if n < 0.3 then return 0.1, 0.3, 0.8
-    elseif n < 0.4 then return 0.2, 0.5, 0.9
-    elseif n < 0.5 then return 0.9, 0.8, 0.6
-    elseif n < 0.7 then return 0.3, 0.7, 0.2
-    elseif n < 0.85 then return 0.4, 0.5, 0.2
-    else return 0.6, 0.6, 0.6
+    local n = noiseValue + 0.5
+    if n < 0.1 then return 0.35,0.35,0.35
+    elseif n < 0.35 then return 0.5, 0.4, 0.25
+    elseif n < 0.4 then return 0.2, 0.15, 0.1
+    elseif n > 0.9 then return 0.35,0.35,0.35
+    elseif n > 0.85 then return  0.5,0.5,0.5
+    else return 0,0,0
     end
 end
 
