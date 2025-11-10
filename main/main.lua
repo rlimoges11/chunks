@@ -3,73 +3,14 @@ local FLUX = require("lib.vendor.flux_min")
 local SLAB = require("lib.vendor.slab")
 local Camera = require("lib.vendor.hump.camera")
 local lfs = require("love.filesystem")
-
--- ==================== PERLIN NOISE CLASS ====================
-local Perlin = {}
-Perlin.__index = Perlin
-
-function Perlin:new(seed)
-    local obj = setmetatable({}, Perlin)
-    obj.seed = seed or 0
-    obj.perm = {}
-    obj:init()
-    return obj
-end
-
-function Perlin:init()
-    math.randomseed(self.seed)
-    for i = 0, 255 do self.perm[i+1] = i end
-    for i = 0, 255 do
-        local j = math.random(0, 255)
-        self.perm[i+1], self.perm[j+1] = self.perm[j+1], self.perm[i+1]
-    end
-    for i = 0, 255 do self.perm[i + 257] = self.perm[i + 1] end
-end
-
-function Perlin:fade(t) return t * t * t * (t * (t * 6 - 15) + 10) end
-function Perlin:lerp(t, a, b) return a + t * (b - a) end
-
-function Perlin:grad(hash, x, y)
-    local h = hash % 4
-    local u = (h < 2) and x or -x
-    local v = (h < 1 or h == 3) and y or -y
-    return u + v
-end
-
-function Perlin:noise(x, y)
-    local scale = 0.01
-    x, y = x * scale, y * scale
-    local X, Y = math.floor(x) % 256, math.floor(y) % 256
-    local xf, yf = x - math.floor(x), y - math.floor(y)
-    local u, v = self:fade(xf), self:fade(yf)
-
-    local a = self.perm[X + 1] + Y
-    local aa, ab = self.perm[a + 1], self.perm[a + 2]
-    local b = self.perm[X + 2] + Y
-    local ba, bb = self.perm[b + 1], self.perm[b + 2]
-
-    return self:lerp(v, self:lerp(u, self:grad(self.perm[aa + 1], xf, yf),
-            self:grad(self.perm[ba + 1], xf - 1, yf)),
-            self:lerp(u, self:grad(self.perm[ab + 1], xf, yf - 1),
-                    self:grad(self.perm[bb + 1], xf - 1, yf - 1)))
-end
-
-function Perlin:octaveNoise(x, y, octaves, persistence)
-    local value, amplitude, frequency, maxValue = 0, 1, 1, 0
-    for i = 1, octaves do
-        value = value + self:noise(x * frequency, y * frequency) * amplitude
-        maxValue = maxValue + amplitude
-        amplitude = amplitude * persistence
-        frequency = frequency * 2
-    end
-    return value / maxValue
-end
+local Perlin = require("lib.modules.perlin")
+local Input = require("lib.modules.input")
+local UI = require("lib.modules.ui")
 
 -- ==================== ENGINE TABLE & STATE ====================
 local engine = {
     gameData = {},
     chunks = {},
-    keysPressed = {},
     camera = nil,
     camX = 0, camY = 0,
     images = {},
@@ -78,7 +19,7 @@ local engine = {
     showWorldGenWindow = false,
     seedInputText = "",
     statusText = "",
-    mouseDebug = ""  -- Show mouse state
+    mouseDebug = ""
 }
 
 if not lfs.getInfo(engine.assetsDir) then
@@ -97,6 +38,7 @@ local function getTerrainColor(noiseValue)
     end
 end
 
+-- World management
 function engine.clearWorld()
     engine.images = {}
     local items = lfs.getDirectoryItems(engine.assetsDir)
@@ -125,6 +67,7 @@ function engine.generateRandomSeed()
     return math.random(1, 999999)
 end
 
+-- Image generation
 function engine.generateCellImage(i, j, size)
     print(string.format("Generating cell %d,%d...", i, j))
     local imgData = love.image.newImageData(size, size)
@@ -197,12 +140,7 @@ end
 function love.update(dt)
     SLAB.Update(dt)
 
-    local moveX, moveY = 0, 0
-    if engine.keysPressed["left"] then moveX = moveX - 1 end
-    if engine.keysPressed["right"] then moveX = moveX + 1 end
-    if engine.keysPressed["up"] then moveY = moveY - 1 end
-    if engine.keysPressed["down"] then moveY = moveY + 1 end
-
+    local moveX, moveY = Input.getMovement()
     local len = math.sqrt(moveX * moveX + moveY * moveY)
     if len > 0 then
         moveX = moveX / len * engine.camSpeed * dt
@@ -261,79 +199,22 @@ function love.draw()
     -- ==================== CRITICAL FIX: Define SLAB elements BEFORE Draw ====================
 
     -- 1. Define main menu bar
-    if SLAB.BeginMainMenuBar() then
-        if SLAB.BeginMenu("File") then
-            if SLAB.MenuItem("Generate New World") then
-                engine.showWorldGenWindow = true
-                engine.seedInputText = tostring(engine.gameData.worldSeed or engine.generateRandomSeed())
-            end
-            SLAB.EndMenu()
-        end
-        SLAB.EndMainMenuBar()
-    end
+    UI.drawMenuBar(engine)
 
     -- 2. Define window (if visible)
-    if engine.showWorldGenWindow then
-        -- Debug print to confirm definition
-        print("DEBUG: Defining WorldGenWindow UI elements...")
-
-        SLAB.BeginWindow('WorldGenWindow', {
-            Title = "Generate New World",
-            X = screenW/2 - 200,
-            Y = screenH/2 - 100,
-            W = 400,
-            H = 200,
-            AutoSizeWindow = false,
-            Border = 20
-        })
-
-        SLAB.Text("Current Seed: " .. (engine.gameData.worldSeed or 0))
-        SLAB.Separator()
-        SLAB.Text("New Seed:")
-
-        -- Input field
-        if SLAB.Input('SeedInput', {Text = engine.seedInputText}) then
-            engine.seedInputText = SLAB.GetInputText()
-        end
-
-        -- Randomize button
-        if SLAB.Button('Randomize') then
-            engine.seedInputText = tostring(engine.generateRandomSeed())
-            engine.statusText = "Randomized: " .. engine.seedInputText
-            print("RANDOMIZE clicked")
-        end
-
-        SLAB.Separator()
-
-        -- Generate button
-        if SLAB.Button('Generate') then
-            engine.applyNewSeed(engine.seedInputText)
-            print("GENERATE clicked")
-        end
-
-        SLAB.SameLine()
-
-        -- Cancel button
-        if SLAB.Button('Cancel') then
-            engine.showWorldGenWindow = false
-            print("CANCEL clicked")
-        end
-
-        SLAB.EndWindow()
-    end
+    UI.drawWorldGenWindow(engine, screenW, screenH)
 
     -- 3. Draw EVERYTHING at once
     SLAB.Draw()
 end
 
 function love.keyreleased(key)
-    engine.keysPressed[key] = nil
+    Input.keyreleased(key)
 end
 
 function love.keypressed(key)
-    engine.keysPressed[key] = true
+    Input.keypressed(key)
 
-    -- INSTANT F5 HANDLING
     if key == "f5" then
         engine.showWorldGenWindow = not engine.showWorldGenWindow
         engine.seedInputText = tostring(engine.gameData.worldSeed or engine.generateRandomSeed())
