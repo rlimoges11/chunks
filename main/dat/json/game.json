@@ -23,5 +23,6 @@
     "maxScale": 2,
     "moveSpeed": 300
   },
-  "chunkSize": 256
+  "chunkSize": 256,
+  "worldSeed": 1234567890
 }
