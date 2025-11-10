@@ -21,7 +21,7 @@
     "targetScale": 1,
     "minScale": 0.1,
     "maxScale": 2,
-    "moveSpeed": 500
+    "moveSpeed": 300
   },
   "chunkSize": 256
 }
