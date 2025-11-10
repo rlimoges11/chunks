@@ -78,7 +78,7 @@ local engine = {
     showWorldGenWindow = false,
     seedInputText = "",
     statusText = "",
-    f5Debug = ""  -- Debug F5 state
+    mouseDebug = ""  -- Show mouse state
 }
 
 if not lfs.getInfo(engine.assetsDir) then
@@ -117,7 +117,7 @@ function engine.applyNewSeed(newSeed)
     engine.perlin = Perlin:new(seed)
     engine.clearWorld()
     engine.showWorldGenWindow = false
-    engine.statusText = string.format("NEW SEED APPLIED: %d", seed)
+    engine.statusText = string.format("NEW SEED: %d", seed)
     print("Applied seed:", seed)
 end
 
@@ -246,66 +246,21 @@ function love.draw()
     end
     engine.camera:detach()
 
-    -- ON-SCREEN DEBUG INFO
-    love.graphics.setColor(1, 1, 0, 1)  -- Yellow for visibility
+    -- DEBUG VISUALIZATION
+    love.graphics.setColor(1, 1, 0, 1)
     love.graphics.print(string.format("SEED: %d", engine.gameData.worldSeed or 0), 10, 10)
     love.graphics.print(string.format("CAM: (%.1f, %.1f)", engine.camX, engine.camY), 10, 30)
     love.graphics.print(string.format("FPS: %d", love.timer.getFPS()), 10, 50)
     love.graphics.print(engine.statusText, 10, 70)
-    love.graphics.print(string.format("F5 State: %s (Window: %s)",
-            engine.f5Debug,
-            engine.showWorldGenWindow and "VISIBLE" or "HIDDEN"
-    ), 10, 90)
 
-    -- Draw SLAB FIRST for menu bar
-    SLAB.Draw()
+    -- Show mouse position
+    local mx, my = love.mouse.getPosition()
+    love.graphics.print(string.format("MOUSE: (%d, %d)", mx, my), 10, 90)
+    love.graphics.print("Window: " .. (engine.showWorldGenWindow and "VISIBLE" or "HIDDEN"), 10, 110)
 
-    -- Draw window AFTER to ensure it's on top
-    if engine.showWorldGenWindow then
-        print("DEBUG: Window render started")
+    -- ==================== CRITICAL FIX: Define SLAB elements BEFORE Draw ====================
 
-        -- Use centered positioning
-        SLAB.BeginWindow('WorldGenWindow', {
-            Title = "Generate New World",
-            X = screenW/2 - 200,
-            Y = screenH/2 - 100,
-            W = 400,
-            H = 200,
-            AutoSizeWindow = false,
-            Border = 20,
-            AllowResize = false
-        })
-
-        SLAB.Text("Current Seed: " .. (engine.gameData.worldSeed or 0))
-        SLAB.Separator()
-        SLAB.Text("New Seed:")
-
-        if SLAB.Input('SeedInput', {Text = engine.seedInputText}) then
-            engine.seedInputText = SLAB.GetInputText()
-        end
-
-        if SLAB.Button('Randomize') then
-            engine.seedInputText = tostring(engine.generateRandomSeed())
-        end
-
-        SLAB.Separator()
-
-        if SLAB.Button('Generate') then
-            engine.applyNewSeed(engine.seedInputText)
-        end
-
-        SLAB.SameLine()
-
-        if SLAB.Button('Cancel') then
-            engine.showWorldGenWindow = false
-        end
-
-        SLAB.EndWindow()
-
-        -- Force redraw to ensure visibility
-        SLAB.Draw()
-    end
-
+    -- 1. Define main menu bar
     if SLAB.BeginMainMenuBar() then
         if SLAB.BeginMenu("File") then
             if SLAB.MenuItem("Generate New World") then
@@ -316,6 +271,59 @@ function love.draw()
         end
         SLAB.EndMainMenuBar()
     end
+
+    -- 2. Define window (if visible)
+    if engine.showWorldGenWindow then
+        -- Debug print to confirm definition
+        print("DEBUG: Defining WorldGenWindow UI elements...")
+
+        SLAB.BeginWindow('WorldGenWindow', {
+            Title = "Generate New World",
+            X = screenW/2 - 200,
+            Y = screenH/2 - 100,
+            W = 400,
+            H = 200,
+            AutoSizeWindow = false,
+            Border = 20
+        })
+
+        SLAB.Text("Current Seed: " .. (engine.gameData.worldSeed or 0))
+        SLAB.Separator()
+        SLAB.Text("New Seed:")
+
+        -- Input field
+        if SLAB.Input('SeedInput', {Text = engine.seedInputText}) then
+            engine.seedInputText = SLAB.GetInputText()
+        end
+
+        -- Randomize button
+        if SLAB.Button('Randomize') then
+            engine.seedInputText = tostring(engine.generateRandomSeed())
+            engine.statusText = "Randomized: " .. engine.seedInputText
+            print("RANDOMIZE clicked")
+        end
+
+        SLAB.Separator()
+
+        -- Generate button
+        if SLAB.Button('Generate') then
+            engine.applyNewSeed(engine.seedInputText)
+            print("GENERATE clicked")
+        end
+
+        SLAB.SameLine()
+
+        -- Cancel button
+        if SLAB.Button('Cancel') then
+            engine.showWorldGenWindow = false
+            print("CANCEL clicked")
+        end
+
+        SLAB.EndWindow()
+    end
+
+    -- 3. Draw EVERYTHING at once
+    SLAB.Draw()
 end
 
 function love.keyreleased(key)
@@ -341,7 +349,3 @@ function love.keypressed(key)
         end
     end
 end
-
-function love.mousepressed(x, y, button) end
-function love.mousereleased(x, y, button) end
-function love.textinput(text) end
