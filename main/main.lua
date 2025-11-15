@@ -22,7 +22,7 @@ local engine = {
     -- NEW ZOOM PROPERTIES
     zoom = 1.0,
     minZoom = 1,
-    maxZoom = 4.0,
+    maxZoom = 5.0,
     zoomSpeed = 1.1
 }
 
@@ -36,9 +36,9 @@ local function getTerrainColor(noiseValue)
     if n < 0.05 then return 0.5,0.5,0.5
     elseif n < 0.1 then return 0.35,0.35,0.35
     elseif n < 0.2 then return 0.2, 0.15, 0.1
-    elseif n < 0.3 then return 0.5, 0.4, 0.25
+    elseif n < 0.4 then return 0.5, 0.4, 0.25
     elseif n > 0.85 then return 0.5,0.5,0.5
-    elseif n > 0.7 then return 0.35,0.35,0.35
+    elseif n > 0.6 then return 0.35,0.35,0.35
     else return 0.025,0.025,0.025
     end
 end
@@ -109,32 +109,68 @@ end
 function engine.getCellImage(i, j, size)
     if engine.isClearing then return nil end  -- Block during clear
 
+    -- Initialize the row if it doesn't exist
     if not engine.images[i] then engine.images[i] = {} end
-    if engine.images[i][j] then return engine.images[i][j] end
+    
+    -- Return cached image if it exists
+    if engine.images[i][j] then 
+        return engine.images[i][j] 
+    end
 
+    -- Only load/generate the image if we don't have it cached
     local filename = string.format("%s/cell_%d_%d.png", engine.assetsDir, i, j)
     if lfs.getInfo(filename) then
-        local success, img = pcall(function() return love.graphics.newImage(filename) end)
+        local success, img = pcall(function() 
+            local img = love.graphics.newImage(filename)
+            -- Set the filter based on zoom level to improve visual quality
+            if engine.zoom > 1.5 then
+                img:setFilter('nearest', 'nearest') -- Pixelated look when zoomed in
+            else
+                img:setFilter('linear', 'linear')   -- Smooth when zoomed out
+            end
+            return img
+        end)
+        
         if success and img then
             engine.images[i][j] = img
             return img
         else
+            -- If loading failed, remove the corrupted file
             lfs.remove(filename)
         end
     end
-    return engine.generateCellImage(i, j, size)
+    
+    -- Only generate new images if they're likely to be visible
+    local screenW, screenH = love.graphics.getDimensions()
+    local camX, camY = engine.camera:position()
+    local viewLeft = camX - screenW/2
+    local viewRight = camX + screenW/2
+    local viewTop = camY - screenH/2
+    local viewBottom = camY + screenH/2
+    
+    local chunkX, chunkY = i * size, j * size
+    
+    -- Only generate if the chunk is within the extended viewport
+    if chunkX + size * 2 >= viewLeft and 
+       chunkX <= viewRight * 1.5 and 
+       chunkY + size * 2 >= viewTop and 
+       chunkY <= viewBottom * 1.5 then
+        return engine.generateCellImage(i, j, size)
+    end
+    
+    return nil
 end
 
 function engine.init()
     engine.camera = Camera(0, 0)
     engine.camera.smoother = function() return 1 end
-    engine.zoom = 1.0  -- Reset zoom
+    engine.zoom = engine.gameData.camera.scale or 1
     engine.camera:zoomTo(engine.zoom)  -- Apply zoom
 
     local seed = engine.gameData.worldSeed or os.time()
     engine.perlin = Perlin:new(seed)
     engine.seedInputText = tostring(seed)
-    engine.camSpeed = engine.gameData.camera.moveSpeed or 300
+    engine.camSpeed = engine.gameData.camera.moveSpeed
     engine.isClearing = false
     engine.statusText = "Press F5 to open world manager | Scroll to zoom"
     print("Engine initialized - Seed:", seed, "Zoom:", engine.zoom)
@@ -171,31 +207,73 @@ function love.update(dt)
 end
 
 function love.draw()
-    local size = engine.gameData.chunkSize or 256
+    local size = engine.gameData.chunkSize
     local screenW, screenH = love.graphics.getDimensions()
+    
+    -- Get camera position in world coordinates
     local camX, camY = engine.camera:position()
-    local viewLeft = camX - screenW/2
-    local viewRight = camX + screenW/2
-    local viewTop = camY - screenH/2
-    local viewBottom = camY + screenH/2
-
-    local gridStartX = math.floor(viewLeft / size) - 1
-    local gridStartY = math.floor(viewTop / size) - 1
-    local gridEndX = math.ceil(viewRight / size) + 1
-    local gridEndY = math.ceil(viewBottom / size) + 1
-
+    
+    -- Calculate viewport bounds in world coordinates, accounting for zoom
+    local viewLeft = camX - (screenW / 2) / engine.zoom
+    local viewRight = camX + (screenW / 2) / engine.zoom
+    local viewTop = camY - (screenH / 2) / engine.zoom
+    local viewBottom = camY + (screenH / 2) / engine.zoom
+    
+    -- Convert world coordinates to grid coordinates
+    -- Use math.floor and math.ceil to ensure we get all chunks that intersect the view
+    local gridStartX = math.floor(viewLeft / size)
+    local gridStartY = math.floor(viewTop / size)
+    local gridEndX = math.ceil(viewRight / size)
+    local gridEndY = math.ceil(viewBottom / size)
+    
+    -- Calculate load boundaries with a small buffer that scales with zoom
+    local loadBuffer = math.max(1, math.ceil(2 / engine.zoom))
+    
+    -- Calculate load boundaries without restricting to positive values
+    -- This allows loading chunks in negative coordinates
+    local loadStartX = gridStartX - loadBuffer
+    local loadStartY = gridStartY - loadBuffer
+    local loadEndX = gridEndX + loadBuffer
+    local loadEndY = gridEndY + loadBuffer
+    
     engine.camera:attach()
+    
+    -- First pass: Load/generate visible chunks
+    for j = loadStartY, loadEndY do
+        for i = loadStartX, loadEndX do
+            -- Calculate chunk's world position
+            local chunkX, chunkY = i * size, j * size
+            
+            -- Check if chunk intersects with the extended viewport
+            -- The extended viewport includes a buffer area around the screen
+            local extendedLeft = viewLeft - (loadBuffer * size)
+            local extendedRight = viewRight + (loadBuffer * size)
+            local extendedTop = viewTop - (loadBuffer * size)
+            local extendedBottom = viewBottom + (loadBuffer * size)
+            
+            -- Check for intersection between chunk and extended viewport
+            if chunkX + size >= extendedLeft and chunkX <= extendedRight and
+               chunkY + size >= extendedTop and chunkY <= extendedBottom then
+                engine.getCellImage(i, j, size)
+            end
+        end
+    end
+    
+    -- Second pass: Draw only the visible chunks
     for j = gridStartY, gridEndY do
         for i = gridStartX, gridEndX do
             local x, y = i * size, j * size
+            
+            -- Skip if completely outside viewport (with some padding)
             if x + size < viewLeft or x > viewRight or
-                    y + size < viewTop or y > viewBottom then
+               y + size < viewTop or y > viewBottom then
                 goto continue
             end
-            local img = engine.getCellImage(i, j, size)
+            
+            local img = engine.images[i] and engine.images[i][j]
             if img then
                 love.graphics.setColor(1, 1, 1, 1)
-                love.graphics.draw(img, x, y)
+                love.graphics.draw(img, x, y, 0, 1, 1)
             end
             ::continue::
         end
