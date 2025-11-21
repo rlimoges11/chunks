@@ -16,32 +16,49 @@ local function selectTileNameByPreset(preset, n, s, w, e, nw, ne, sw, se)
         return {"grass"}
     end
     
-    -- Check for corners first
+    -- Check for outer corners first (these take priority)
     if not n and not w and nw then return {"corner_nw"} end
     if not n and not e and ne then return {"corner_ne"} end
     if not s and not w and sw then return {"corner_sw"} end
     if not s and not e and se then return {"corner_se"} end
     
-    -- Check for edges
-    if not n and w and e then return {"edge_n"} end
-    if not s and w and e then return {"edge_s"} end
-    if not w and n and s then return {"edge_w"} end
-    if not e and n and s then return {"edge_e"} end
-    
-    -- Check for inner corners (single diagonal grass)
+    -- Check for inner corners (where two adjacent sides are grass but diagonal is water)
     if n and w and not nw then return {"inner_nw"} end
     if n and e and not ne then return {"inner_ne"} end
     if s and w and not sw then return {"inner_sw"} end
     if s and e and not se then return {"inner_se"} end
     
-    -- Fallback to edges based on single neighbor
-    if n then return {"edge_n"} end
-    if s then return {"edge_s"} end
-    if w then return {"edge_w"} end
-    if e then return {"edge_e"} end
+    -- Check for edges with both adjacent sides (prevent corners from being misclassified as edges)
+    if not n and w and e and not (ne or nw) then return {"edge_n"} end
+    if not s and w and e and not (se or sw) then return {"edge_s"} end
+    if not w and n and s and not (nw or sw) then return {"edge_w"} end
+    if not e and n and s and not (ne or se) then return {"edge_e"} end
     
-    -- Default to grass if nothing else matches
-    return {"grass"}
+    -- Handle single-edge cases (with diagonal checks to prevent corner conflicts)
+    if n and not (w or e or ne or nw) then return {"edge_n"} end
+    if s and not (w or e or se or sw) then return {"edge_s"} end
+    if w and not (n or s or nw or sw) then return {"edge_w"} end
+    if e and not (n or s or ne or se) then return {"edge_e"} end
+    
+    -- Handle corners that might have been missed (with one adjacent edge)
+    if n and w and not nw then return {"inner_nw"} end
+    if n and e and not ne then return {"inner_ne"} end
+    if s and w and not sw then return {"inner_sw"} end
+    if s and e and not se then return {"inner_se"} end
+    
+    -- Handle T-junctions (where three sides are grass)
+    if n and w and e and not s then return {"edge_s"} end
+    if s and w and e and not n then return {"edge_n"} end
+    if w and n and s and not e then return {"edge_e"} end
+    if e and n and s and not w then return {"edge_w"} end
+    
+    -- If we have any grass neighbor, default to grass
+    if n or s or w or e or nw or ne or sw or se then
+        return {"grass"}
+    end
+    
+    -- Last resort fallback
+    return {"water"}
 end
 local JSON = require("lib.vendor.json_min")
 local FLUX = require("lib.vendor.flux_min")
