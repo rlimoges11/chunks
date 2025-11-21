@@ -41,6 +41,14 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     // Calculate the final UV coordinates
     vec2 tileOffset = vec2(tileX * u_tile_px, tileY * u_tile_px);
     vec2 uv = (tileOffset + pixelInTile) / u_tileset_size;
+    
+    // Sample the water tile
+    vec4 tileColor = Texel(u_tileset, uv);
+    
+        // Sample the original green channel from the texture
+        float greenValue = Texel(texture, local).g;
+        // Blend the water with the original green texture (adjust the blend factor as needed)
+        tileColor = mix(tileColor, vec4(greenValue/2, greenValue/2, greenValue/2, 0.5), 0.25);
 
-    return Texel(u_tileset, uv) * color;
+    return tileColor * color;
 }

@@ -324,7 +324,8 @@ function engine.init()
     engine.zoom = engine.gameData.camera.scale or 1
     engine.camera:zoomTo(engine.zoom)  -- Apply zoom
 
-    local seed = engine.gameData.worldSeed or os.time()
+    local seed = os.time()
+    math.randomseed(seed)
     engine.perlin = Perlin:new(seed)
     engine.seedInputText = tostring(seed)
     engine.camSpeed = engine.gameData.camera.moveSpeed
