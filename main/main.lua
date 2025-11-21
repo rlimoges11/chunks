@@ -239,18 +239,57 @@ function engine.generateCellImage(i, j, size)
 
     print(string.format("Generating cell %d,%d...", i, j))
     local imgData = love.image.newImageData(size, size)
-
+    local noiseData = {}
     local count = engine.tileCount or 1
+    
+    -- Initialize noiseData with 1-based indexing
+    for y = 1, size do
+        noiseData[y] = {}
+        for x = 1, size do
+            noiseData[y][x] = {r=0, g=0, b=0}
+        end
+    end
+    
+    -- First pass: generate all noise values
     for py = 0, size-1 do
         for px = 0, size-1 do
             local wx, wy = i * size + px, j * size + py
+            -- Generate base noise for terrain
             local noise = engine.perlin:octaveNoise(wx, wy, 4, 0.65)
             local nNorm = normalizeNoise(noise)
-            local idx = chooseTileIndex(wx, wy, nNorm)
-            if idx < 0 then idx = 0 end
-            if idx >= count then idx = count - 1 end
-            local rNorm = (idx + 0.5) / count
-            imgData:setPixel(px, py, rNorm, nNorm, 0, 1)
+            
+            -- Generate different noise for variation (using different seed/offset)
+            local variationNoise = math.random()
+            
+            -- Store in 1-based index
+            noiseData[py+1][px+1] = {
+                r = (chooseTileIndex(wx, wy, nNorm) + 0.5) / count,
+                g = nNorm,
+                b = variationNoise
+            }
+        end
+    end
+    
+    -- Second pass: apply blur to noise in blue channel
+    for py = 1, size do
+        for px = 1, size do
+            -- Simple 3x3 box blur for the blue channel
+            local sum = 0
+            local count = 0
+            
+            for y = -1, 1 do
+                for x = -1, 1 do
+                    local nx, ny = px + x, py + y
+                    if nx >= 1 and nx <= size and ny >= 1 and ny <= size then
+                        sum = sum + noiseData[ny][nx].b
+                        count = count + 1
+                    end
+                end
+            end
+            
+            local avgNoise = sum / count
+            local pixel = noiseData[py][px]
+            imgData:setPixel(px-1, py-1, pixel.r, pixel.g, avgNoise, 1)
         end
     end
 

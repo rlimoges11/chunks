@@ -45,10 +45,16 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     // Sample the water tile
     vec4 tileColor = Texel(u_tileset, uv);
     
-        // Sample the original green channel from the texture
-        float greenValue = Texel(texture, local).g;
-        // Blend the water with the original green texture (adjust the blend factor as needed)
-        tileColor = mix(tileColor, vec4(greenValue/2, greenValue/2, greenValue/2, 0.5), 0.25);
+    // Get pre-blurred noise from blue channel
+    float noise = Texel(texture, local).b;
+    
+    // Apply subtle color variation based on noise
+    float variation = (noise - 0.5) * 0.1; // Scale noise to ±0.01 range
+    tileColor.rgb += vec3(variation);
+    
+
+    float greenValue = Texel(texture, local).g;
+    tileColor = mix(tileColor, vec4(greenValue, greenValue, greenValue, 1), 0.3);
 
     return tileColor * color;
 }
