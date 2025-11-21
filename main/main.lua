@@ -16,11 +16,10 @@ local function selectTileNameByPreset(preset, n, s, w, e, nw, ne, sw, se)
         return {"grass"}
     end
     
-    -- Check for outer corners first (these take priority)
-    if not n and not w and nw then return {"corner_nw"} end
-    if not n and not e and ne then return {"corner_ne"} end
-    if not s and not w and sw then return {"corner_sw"} end
-    if not s and not e and se then return {"corner_se"} end
+    if not n and not w and not nw then return {"corner_nw"} end
+    if not n and not e and not ne then return {"corner_ne"} end
+    if not s and not w and not sw then return {"corner_sw"} end
+    if not s and not e and not se then return {"corner_se"} end
     
     -- Check for inner corners (where two adjacent sides are grass but diagonal is water)
     if n and w and not nw then return {"inner_nw"} end
