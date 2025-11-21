@@ -90,13 +90,13 @@ local function chooseTileIndex(wx, wy, nNorm)
     end
 
     if n and w then
-        return getIndexByAnyName({"water-grass-nw", "water-grass-tl"})
-    elseif n and e then
         return getIndexByAnyName({"water-grass-ne", "water-grass-tr"})
+    elseif n and e then
+        return getIndexByAnyName({"water-grass-nw", "water-grass-tl"})
     elseif s and w then
-        return getIndexByAnyName({"water-grass-sw", "water-grass-bl"})
-    elseif s and e then
         return getIndexByAnyName({"water-grass-se", "water-grass-br"})
+    elseif s and e then
+        return getIndexByAnyName({"water-grass-sw", "water-grass-bl"})
     end
 
     if n then
