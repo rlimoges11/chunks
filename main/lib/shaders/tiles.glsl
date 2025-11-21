@@ -1,5 +1,30 @@
 // tiles.glsl
 
+// Pseudo-random number generator (hash function)
+float rand(vec2 n) { 
+    return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+}
+
+// 2D noise function
+float noise2D(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    
+    // Four corners in 2D of a tile
+    float a = rand(i);
+    float b = rand(i + vec2(1.0, 0.0));
+    float c = rand(i + vec2(0.0, 1.0));
+    float d = rand(i + vec2(1.0, 1.0));
+    
+    // Smooth interpolation with cubic curve
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    
+    // Mix 4 coorners percentages
+    return mix(a, b, u.x) + 
+           (c - a) * u.y * (1.0 - u.x) + 
+           (d - b) * u.x * u.y;
+}
+
 extern Image u_tileset;
 extern vec2 u_tileset_size;
 extern float u_tile_px;
@@ -44,16 +69,13 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     
     // Sample the water tile
     vec4 tileColor = Texel(u_tileset, uv);
-    
+
     // Get pre-blurred noise from blue channel
     float noise = Texel(texture, local).b;
-    
-    // Apply subtle color variation based on noise
-    float variation = (noise - 0.5) * 0.1; // Scale noise to ±0.01 range
-    tileColor.rgb += vec3(variation);
-    
 
-    float greenValue = Texel(texture, local).g;
+    
+    // Apply green channel blend with original texture
+    float greenValue = Texel(texture, local).g + noise/15;
     tileColor = mix(tileColor, vec4(greenValue, greenValue, greenValue, 1), 0.3);
 
     return tileColor * color;
