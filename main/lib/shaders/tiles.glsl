@@ -18,20 +18,25 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     vec2 local = (world - u_chunk_origin) / u_chunk_px;
     float invChunk = 1.0 / u_chunk_px;
     local = clamp(local, 0.0, 1.0 - invChunk);
+    // Sample the red channel to get the tile index
     float r = Texel(texture, local).r;
-
+    
+    // Calculate the tile index (0 to count-1)
     float count = floor(u_tile_count + 0.5);
     float idx = floor(r * count);
     idx = clamp(idx, 0.0, max(count - 1.0, 0.0));
-
+    
+    // Calculate the tile's position in the tileset
     float cols = max(1.0, floor(u_tileset_cols + 0.5));
-    float c = mod(idx, cols);
-    float rr = floor(idx / cols);
-    vec2 tileOffset = vec2(c * u_tile_px, rr * u_tile_px);
-
-    vec2 pixelFrac = fract(world);
-    vec2 intra = pixelFrac * (u_tile_px - 1.0) + 0.5;
-    vec2 uv = (tileOffset + intra) / u_tileset_size;
+    float tileX = mod(idx, cols);
+    float tileY = floor(idx / cols);
+    
+    // Calculate the pixel coordinates within the tile
+    vec2 pixelInTile = fract(world) * u_tile_px;
+    
+    // Calculate the final UV coordinates
+    vec2 tileOffset = vec2(tileX * u_tile_px, tileY * u_tile_px);
+    vec2 uv = (tileOffset + pixelInTile) / u_tileset_size;
 
     return Texel(u_tileset, uv) * color;
 }

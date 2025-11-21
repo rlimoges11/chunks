@@ -1,3 +1,48 @@
+local function selectTileNameByPreset(preset, n, s, w, e, nw, ne, sw, se)
+    -- For yup preset, we need to invert the directions
+    if preset == "yup" then
+        n, s = s, n
+        w, e = e, w
+        nw, sw, ne, se = sw, nw, se, ne
+    end
+    
+    -- If no neighbors are grass, it's water
+    if not (n or s or w or e or nw or ne or sw or se) then
+        return {"water"}
+    end
+    
+    -- If all neighbors are grass, it's grass
+    if n and s and w and e and nw and ne and sw and se then
+        return {"grass"}
+    end
+    
+    -- Check for corners first
+    if not n and not w and nw then return {"corner_nw"} end
+    if not n and not e and ne then return {"corner_ne"} end
+    if not s and not w and sw then return {"corner_sw"} end
+    if not s and not e and se then return {"corner_se"} end
+    
+    -- Check for edges
+    if not n and w and e then return {"edge_n"} end
+    if not s and w and e then return {"edge_s"} end
+    if not w and n and s then return {"edge_w"} end
+    if not e and n and s then return {"edge_e"} end
+    
+    -- Check for inner corners (single diagonal grass)
+    if n and w and not nw then return {"inner_nw"} end
+    if n and e and not ne then return {"inner_ne"} end
+    if s and w and not sw then return {"inner_sw"} end
+    if s and e and not se then return {"inner_se"} end
+    
+    -- Fallback to edges based on single neighbor
+    if n then return {"edge_n"} end
+    if s then return {"edge_s"} end
+    if w then return {"edge_w"} end
+    if e then return {"edge_e"} end
+    
+    -- Default to grass if nothing else matches
+    return {"grass"}
+end
 local JSON = require("lib.vendor.json_min")
 local FLUX = require("lib.vendor.flux_min")
 local SLAB = require("lib.vendor.slab")
@@ -29,7 +74,8 @@ local engine = {
     tilePx = 16,
     tileThreshold = 0.45,
     tileIndexByName = {},
-    tileCount = 0
+    tileCount = 0,
+    tilePreset = "ydown"
 }
 
 if not lfs.getInfo(engine.assetsDir) then
@@ -37,80 +83,97 @@ if not lfs.getInfo(engine.assetsDir) then
     lfs.createDirectory(engine.assetsDir)
 end
 
-local function getTerrainColor(noiseValue)
-    local n = noiseValue + 0.5
-    if n < 0.05 then return 0.5,0.5,0.5
-    elseif n < 0.1 then return 0.35,0.35,0.35
-    elseif n < 0.2 then return 0.2, 0.15, 0.1
-    elseif n < 0.4 then return 0.5, 0.4, 0.25
-    elseif n > 0.85 then return 0.5,0.5,0.5
-    elseif n > 0.6 then return 0.35,0.35,0.35
-    else return 0.025,0.025,0.025
-    end
-end
-
 local function normalizeNoise(n)
     return math.max(0, math.min(1, (n + 1) * 0.5))
 end
 
 local function getIndexByAnyName(names)
-    if not engine.tileIndexByName then return 0 end
-    for _, name in ipairs(names) do
-        local idx = engine.tileIndexByName[name]
-        if idx ~= nil then return idx end
+    if not engine.tileIndexByName then 
+        print("Error: tileIndexByName is not initialized")
+        return 0 
     end
+    
+    -- Debug output
+    if not names or #names == 0 then
+        print("Warning: No names provided to getIndexByAnyName")
+        return engine.tileIndexByName["water"] or 0
+    end
+    
+    -- First, try exact match (case-insensitive since tileIndexByName uses lowercase keys)
+    for _, name in ipairs(names) do
+        local lowerName = string.lower(name)
+        local idx = engine.tileIndexByName[lowerName]
+        if idx ~= nil then 
+            return idx 
+        end
+    end
+    
+    -- Debug output for missing tile
+    print(string.format("No match found for names: %s", table.concat(names, ", ")))
+    print("Available tiles:")
+    for name, idx in pairs(engine.tileIndexByName) do
+        print(string.format("  %s: %d", name, idx))
+    end
+    
+    -- Fallback to water if no match found
     return engine.tileIndexByName["water"] or 0
 end
 
 local function chooseTileIndex(wx, wy, nNorm)
     local threshold = engine.tileThreshold or 0.45
-    local isWater = nNorm < threshold
-    if not engine.tileCount or engine.tileCount <= 0 then return 0 end
-
-    if not isWater then
-        return engine.tileIndexByName and (engine.tileIndexByName["grass"] or 0) or 0
+    local isWater = nNorm >= threshold
+    
+    -- If we don't have tile data yet, return a default
+    if not engine.tileIndexByName or not engine.tileCount or engine.tileCount <= 0 then
+        return isWater and (engine.tileIndexByName and engine.tileIndexByName["water"] or 0) or 
+                         (engine.tileIndexByName and engine.tileIndexByName["grass"] or 0)
     end
 
+    -- For water tiles, just return water
+    if isWater then
+        return engine.tileIndexByName["water"] or 0
+    end
+
+    -- Function to check if a position is grass (not water)
     local function isGrassAt(x, y)
         local nn = normalizeNoise(engine.perlin:octaveNoise(x, y, 4, 0.65))
-        return nn >= threshold
+        return nn < threshold
     end
 
-    local n = isGrassAt(wx, wy - 1)
-    local s = isGrassAt(wx, wy + 1)
-    local w = isGrassAt(wx - 1, wy)
-    local e = isGrassAt(wx + 1, wy)
-    local nw = isGrassAt(wx - 1, wy - 1)
-    local ne = isGrassAt(wx + 1, wy - 1)
-    local sw = isGrassAt(wx - 1, wy + 1)
-    local se = isGrassAt(wx + 1, wy + 1)
+    -- Check all 8 surrounding positions for grass
+    local n = isGrassAt(wx, wy - 1)     -- North
+    local s = isGrassAt(wx, wy + 1)     -- South
+    local w = isGrassAt(wx - 1, wy)     -- West
+    local e = isGrassAt(wx + 1, wy)     -- East
+    local nw = isGrassAt(wx - 1, wy - 1) -- Northwest
+    local ne = isGrassAt(wx + 1, wy - 1) -- Northeast
+    local sw = isGrassAt(wx - 1, wy + 1) -- Southwest
+    local se = isGrassAt(wx + 1, wy + 1) -- Southeast
 
+    -- If no grass neighbors, it's just grass
     if not (n or s or w or e or nw or ne or sw or se) then
-        return engine.tileIndexByName and (engine.tileIndexByName["water"] or 0) or 0
+        return engine.tileIndexByName["grass"] or 0
     end
 
-    if n and w then
-        return getIndexByAnyName({"water-grass-ne", "water-grass-tr"})
-    elseif n and e then
-        return getIndexByAnyName({"water-grass-nw", "water-grass-tl"})
-    elseif s and w then
-        return getIndexByAnyName({"water-grass-se", "water-grass-br"})
-    elseif s and e then
-        return getIndexByAnyName({"water-grass-sw", "water-grass-bl"})
+    -- Get the appropriate tile names based on the current preset
+    local names = selectTileNameByPreset(engine.tilePreset, n, s, w, e, nw, ne, sw, se)
+    
+    -- Debug output
+    if not names or #names == 0 then
+        print("No tile names returned for position:", wx, wy)
+        return engine.tileIndexByName["grass"] or 0
     end
-
-    if n then
-        return getIndexByAnyName({"water-grass-n"})
-    elseif e then
-        return getIndexByAnyName({"water-grass-e"})
-    elseif w then
-        return getIndexByAnyName({"water-grass-w"})
-    elseif s then
-        -- Fall back to a bottom variant if explicit south is missing
-        return getIndexByAnyName({"water-grass-se", "water-grass-sw"})
+    
+    -- Try to find a matching tile index
+    local idx = getIndexByAnyName(names)
+    
+    -- Debug output if no match found
+    if not idx or idx == 0 then
+        print("No matching tile found for names:", table.concat(names, ", "))
+        return engine.tileIndexByName["grass"] or 0
     end
-
-    return engine.tileIndexByName and (engine.tileIndexByName["water"] or 0) or 0
+    
+    return idx
 end
 
 -- World management (atomic clearing)
@@ -488,6 +551,11 @@ function love.keypressed(key)
         else
             love.event.quit()
         end
+    end
+
+    if key == "f6" then
+        engine.tilePreset = (engine.tilePreset == "ydown") and "yup" or "ydown"
+        engine.statusText = "Tile preset: " .. engine.tilePreset .. " (press F6 to toggle)"
     end
 end
 
