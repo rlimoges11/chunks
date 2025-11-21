@@ -20,14 +20,16 @@ local engine = {
     statusText = "",
     isClearing = false,
     -- NEW ZOOM PROPERTIES
-    zoom = 1.0,
+    zoom = 16.0,
     minZoom = 1,
-    maxZoom = 16.0,
+    maxZoom = 64.0,
     zoomSpeed = 1.1,
     shaderTiles = nil,
     tilesetImage = nil,
     tilePx = 16,
-    tileThreshold = 0.3
+    tileThreshold = 0.45,
+    tileIndexByName = {},
+    tileCount = 0
 }
 
 if not lfs.getInfo(engine.assetsDir) then
@@ -45,6 +47,70 @@ local function getTerrainColor(noiseValue)
     elseif n > 0.6 then return 0.35,0.35,0.35
     else return 0.025,0.025,0.025
     end
+end
+
+local function normalizeNoise(n)
+    return math.max(0, math.min(1, (n + 1) * 0.5))
+end
+
+local function getIndexByAnyName(names)
+    if not engine.tileIndexByName then return 0 end
+    for _, name in ipairs(names) do
+        local idx = engine.tileIndexByName[name]
+        if idx ~= nil then return idx end
+    end
+    return engine.tileIndexByName["water"] or 0
+end
+
+local function chooseTileIndex(wx, wy, nNorm)
+    local threshold = engine.tileThreshold or 0.45
+    local isWater = nNorm < threshold
+    if not engine.tileCount or engine.tileCount <= 0 then return 0 end
+
+    if not isWater then
+        return engine.tileIndexByName and (engine.tileIndexByName["grass"] or 0) or 0
+    end
+
+    local function isGrassAt(x, y)
+        local nn = normalizeNoise(engine.perlin:octaveNoise(x, y, 4, 0.65))
+        return nn >= threshold
+    end
+
+    local n = isGrassAt(wx, wy - 1)
+    local s = isGrassAt(wx, wy + 1)
+    local w = isGrassAt(wx - 1, wy)
+    local e = isGrassAt(wx + 1, wy)
+    local nw = isGrassAt(wx - 1, wy - 1)
+    local ne = isGrassAt(wx + 1, wy - 1)
+    local sw = isGrassAt(wx - 1, wy + 1)
+    local se = isGrassAt(wx + 1, wy + 1)
+
+    if not (n or s or w or e or nw or ne or sw or se) then
+        return engine.tileIndexByName and (engine.tileIndexByName["water"] or 0) or 0
+    end
+
+    if n and w then
+        return getIndexByAnyName({"water-grass-nw", "water-grass-tl"})
+    elseif n and e then
+        return getIndexByAnyName({"water-grass-ne", "water-grass-tr"})
+    elseif s and w then
+        return getIndexByAnyName({"water-grass-sw", "water-grass-bl"})
+    elseif s and e then
+        return getIndexByAnyName({"water-grass-se", "water-grass-br"})
+    end
+
+    if n then
+        return getIndexByAnyName({"water-grass-n"})
+    elseif e then
+        return getIndexByAnyName({"water-grass-e"})
+    elseif w then
+        return getIndexByAnyName({"water-grass-w"})
+    elseif s then
+        -- Fall back to a bottom variant if explicit south is missing
+        return getIndexByAnyName({"water-grass-se", "water-grass-sw"})
+    end
+
+    return engine.tileIndexByName and (engine.tileIndexByName["water"] or 0) or 0
 end
 
 -- World management (atomic clearing)
@@ -90,12 +156,17 @@ function engine.generateCellImage(i, j, size)
     print(string.format("Generating cell %d,%d...", i, j))
     local imgData = love.image.newImageData(size, size)
 
+    local count = engine.tileCount or 1
     for py = 0, size-1 do
         for px = 0, size-1 do
             local wx, wy = i * size + px, j * size + py
             local noise = engine.perlin:octaveNoise(wx, wy, 4, 0.65)
-            local r, g, b = getTerrainColor(noise)
-            imgData:setPixel(px, py, r, g, b, 1)
+            local nNorm = normalizeNoise(noise)
+            local idx = chooseTileIndex(wx, wy, nNorm)
+            if idx < 0 then idx = 0 end
+            if idx >= count then idx = count - 1 end
+            local rNorm = (idx + 0.5) / count
+            imgData:setPixel(px, py, rNorm, nNorm, 0, 1)
         end
     end
 
@@ -182,34 +253,62 @@ function engine.init()
         engine.tilesetImage = love.graphics.newImage(tilesetPath)
         engine.tilesetImage:setFilter('nearest', 'nearest')
         if engine.tilesetImage.setWrap then engine.tilesetImage:setWrap('clamp','clamp') end
-        local ok, shader = pcall(function()
+        local ok, shaderOrErr = pcall(function()
             return love.graphics.newShader("lib/shaders/tiles.glsl")
         end)
-        if ok and shader then
+        if ok and shaderOrErr then
+            local shader = shaderOrErr
             engine.shaderTiles = shader
             shader:send("u_tileset", engine.tilesetImage)
             shader:send("u_tileset_size", { engine.tilesetImage:getWidth(), engine.tilesetImage:getHeight() })
             shader:send("u_tile_px", engine.tilePx)
-            shader:send("u_threshold_water", engine.tileThreshold)
+
+            -- Build tile index map from tiles.json (order defines indices)
+            local offsets = {}
+            local maxX = 0
             local tilesStr = love.filesystem.read("dat/json/tiles.json")
             if tilesStr then
                 local tilesData = JSON.decode(tilesStr)
                 if tilesData and tilesData.ground then
-                    local grassX, grassY, waterX, waterY = 16, 16, 48, 32
+                    engine.tileIndexByName = {}
                     for _, t in ipairs(tilesData.ground) do
-                        if t.name == "grass" then
-                            local x, y = string.match(t.offset, "(%-?%d+),(%-?%d+)")
-                            if x and y then grassX, grassY = tonumber(x), tonumber(y) end
-                        elseif t.name == "water" then
-                            local x, y = string.match(t.offset, "(%-?%d+),(%-?%d+)")
-                            if x and y then waterX, waterY = tonumber(x), tonumber(y) end
-                        end
+                        -- Keep order for count and name->index mapping
+                        local x, y = string.match(t.offset or "0,0", "(%-?%d+),(%-?%d+)")
+                        x, y = tonumber(x) or 0, tonumber(y) or 0
+                        table.insert(offsets, { x, y })
+                        if x > maxX then maxX = x end
                     end
-                    shader:send("u_tile_grass_offset", { grassX, grassY })
-                    shader:send("u_tile_water_offset", { waterX, waterY })
+                    -- 0-based indices for shader mapping
+                    for idx, t in ipairs(tilesData.ground) do
+                        local key = string.lower(t.name or tostring(idx))
+                        engine.tileIndexByName[key] = idx - 1
+                    end
                 end
             end
+            if #offsets == 0 then offsets = { {0,0} } end
+            shader:send("u_tile_count", #offsets)
+            engine.usedCols = math.max(1, math.floor(maxX / engine.tilePx) + 1)
+            shader:send("u_tileset_cols", engine.usedCols)
+            engine.tileCount = #offsets
+            print("Tiles shader ready | used cols:", engine.usedCols, "tileCount:", engine.tileCount)
+
+            -- Aliases to handle naming variants from tiles.json
+            local function alias(a, b)
+                a, b = string.lower(a), string.lower(b)
+                if engine.tileIndexByName[b] and not engine.tileIndexByName[a] then
+                    engine.tileIndexByName[a] = engine.tileIndexByName[b]
+                end
+            end
+            alias('water-grass-nw', 'water-grass-tl')
+            alias('water-grass-ne', 'water-grass-tr')
+            alias('water-grass-sw', 'water-grass-bl')
+            alias('water-grass-se', 'water-grass-br')
+            alias('water-grass-w', 'water-grass-west')
+            alias('water-grass-e', 'water-grass-east')
+            alias('water-grass-n', 'water-grass-north')
+            alias('water-grass-s', 'water-grass-south')
         else
+            print("Shader compile/load failed:", tostring(shaderOrErr))
             engine.shaderTiles = nil
         end
     else
@@ -277,13 +376,17 @@ function love.draw()
     local loadEndX = gridEndX + loadBuffer
     local loadEndY = gridEndY + loadBuffer
     
+    engine.camera:attach()
     if engine.shaderTiles and engine.tilesetImage then
         engine.shaderTiles:send("u_camera_pos", { engine.camX, engine.camY })
         engine.shaderTiles:send("u_zoom", engine.zoom)
         engine.shaderTiles:send("u_screen_size", { screenW, screenH })
+        -- resend dynamic counts defensively
+        engine.shaderTiles:send("u_tile_count", engine.tileCount)
+        engine.shaderTiles:send("u_tileset_cols", engine.usedCols or 1)
         love.graphics.setShader(engine.shaderTiles)
+        engine.statusText = "Tiles shader ON"
     end
-    engine.camera:attach()
     
     -- First pass: Load/generate visible chunks
     for j = loadStartY, loadEndY do
