@@ -23,5 +23,6 @@
     "moveSpeed": 50
   },
   "chunkSize": 256,
+  "tileSize": 16,
   "worldSeed": 1234567890
 }

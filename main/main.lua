@@ -22,8 +22,12 @@ local engine = {
     -- NEW ZOOM PROPERTIES
     zoom = 1.0,
     minZoom = 1,
-    maxZoom = 5.0,
-    zoomSpeed = 1.1
+    maxZoom = 16.0,
+    zoomSpeed = 1.1,
+    shaderTiles = nil,
+    tilesetImage = nil,
+    tilePx = 16,
+    tileThreshold = 0.3
 }
 
 if not lfs.getInfo(engine.assetsDir) then
@@ -100,6 +104,8 @@ function engine.generateCellImage(i, j, size)
     if not success then print("Save failed") return nil end
 
     local img = love.graphics.newImage(imgData)
+    img:setFilter('nearest', 'nearest')
+    if img.setWrap then img:setWrap('clamp','clamp') end
     engine.images[i] = engine.images[i] or {}
     engine.images[i][j] = img
     print(string.format("Saved cell %d,%d", i, j))
@@ -122,12 +128,8 @@ function engine.getCellImage(i, j, size)
     if lfs.getInfo(filename) then
         local success, img = pcall(function() 
             local img = love.graphics.newImage(filename)
-            -- Set the filter based on zoom level to improve visual quality
-            if engine.zoom > 1.5 then
-                img:setFilter('nearest', 'nearest') -- Pixelated look when zoomed in
-            else
-                img:setFilter('linear', 'linear')   -- Smooth when zoomed out
-            end
+            img:setFilter('nearest', 'nearest')
+            if img.setWrap then img:setWrap('clamp','clamp') end
             return img
         end)
         
@@ -174,6 +176,45 @@ function engine.init()
     engine.isClearing = false
     engine.statusText = "Press F5 to open world manager | Scroll to zoom"
     print("Engine initialized - Seed:", seed, "Zoom:", engine.zoom)
+
+    local tilesetPath = "dat/img/tilesets/ground.png"
+    if lfs.getInfo(tilesetPath) then
+        engine.tilesetImage = love.graphics.newImage(tilesetPath)
+        engine.tilesetImage:setFilter('nearest', 'nearest')
+        if engine.tilesetImage.setWrap then engine.tilesetImage:setWrap('clamp','clamp') end
+        local ok, shader = pcall(function()
+            return love.graphics.newShader("lib/shaders/tiles.glsl")
+        end)
+        if ok and shader then
+            engine.shaderTiles = shader
+            shader:send("u_tileset", engine.tilesetImage)
+            shader:send("u_tileset_size", { engine.tilesetImage:getWidth(), engine.tilesetImage:getHeight() })
+            shader:send("u_tile_px", engine.tilePx)
+            shader:send("u_threshold_water", engine.tileThreshold)
+            local tilesStr = love.filesystem.read("dat/json/tiles.json")
+            if tilesStr then
+                local tilesData = JSON.decode(tilesStr)
+                if tilesData and tilesData.ground then
+                    local grassX, grassY, waterX, waterY = 16, 16, 48, 32
+                    for _, t in ipairs(tilesData.ground) do
+                        if t.name == "grass" then
+                            local x, y = string.match(t.offset, "(%-?%d+),(%-?%d+)")
+                            if x and y then grassX, grassY = tonumber(x), tonumber(y) end
+                        elseif t.name == "water" then
+                            local x, y = string.match(t.offset, "(%-?%d+),(%-?%d+)")
+                            if x and y then waterX, waterY = tonumber(x), tonumber(y) end
+                        end
+                    end
+                    shader:send("u_tile_grass_offset", { grassX, grassY })
+                    shader:send("u_tile_water_offset", { waterX, waterY })
+                end
+            end
+        else
+            engine.shaderTiles = nil
+        end
+    else
+        print("Tileset not found at:", tilesetPath)
+    end
 end
 
 -- ==================== LOVE2D CALLBACKS ====================
@@ -236,6 +277,12 @@ function love.draw()
     local loadEndX = gridEndX + loadBuffer
     local loadEndY = gridEndY + loadBuffer
     
+    if engine.shaderTiles and engine.tilesetImage then
+        engine.shaderTiles:send("u_camera_pos", { engine.camX, engine.camY })
+        engine.shaderTiles:send("u_zoom", engine.zoom)
+        engine.shaderTiles:send("u_screen_size", { screenW, screenH })
+        love.graphics.setShader(engine.shaderTiles)
+    end
     engine.camera:attach()
     
     -- First pass: Load/generate visible chunks
@@ -272,6 +319,10 @@ function love.draw()
             
             local img = engine.images[i] and engine.images[i][j]
             if img then
+                if engine.shaderTiles and engine.tilesetImage then
+                    engine.shaderTiles:send("u_chunk_origin", { x, y })
+                    engine.shaderTiles:send("u_chunk_px", size)
+                end
                 love.graphics.setColor(1, 1, 1, 1)
                 love.graphics.draw(img, x, y, 0, 1, 1)
             end
@@ -279,6 +330,9 @@ function love.draw()
         end
     end
     engine.camera:detach()
+    if engine.shaderTiles and engine.tilesetImage then
+        love.graphics.setShader()
+    end
 
     -- Clear status if clearing is done
     if engine.isClearing then
