@@ -23,7 +23,11 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     
     // Calculate the tile index (0 to count-1)
     float count = floor(u_tile_count + 0.5);
-    float idx = floor(r * count);
+    
+    // Add a small epsilon to handle floating point precision issues
+    float idx = floor(r * count + 0.0001);
+    
+    // Clamp the index to valid range
     idx = clamp(idx, 0.0, max(count - 1.0, 0.0));
     
     // Calculate the tile's position in the tileset

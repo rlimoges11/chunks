@@ -166,13 +166,18 @@ local function chooseTileIndex(wx, wy, nNorm)
     local sw = isGrassAt(wx - 1, wy + 1) -- Southwest
     local se = isGrassAt(wx + 1, wy + 1) -- Southeast
 
+    -- Get the appropriate tile names based on the current preset
+    local names = selectTileNameByPreset(engine.tilePreset, n, s, w, e, nw, ne, sw, se)
+    
+    -- Special case for NW corner to ensure it gets a distinct red value
+    if names[1] == "corner_nw" then
+        return engine.tileIndexByName["corner_nw"] or 0
+    end
+    
     -- If no grass neighbors, it's just grass
     if not (n or s or w or e or nw or ne or sw or se) then
         return engine.tileIndexByName["grass"] or 0
     end
-
-    -- Get the appropriate tile names based on the current preset
-    local names = selectTileNameByPreset(engine.tilePreset, n, s, w, e, nw, ne, sw, se)
     
     -- Debug output
     if not names or #names == 0 then
