@@ -1,0 +1,81 @@
+{
+  "ground": [
+    {
+        "id": "1A",
+        "name": "water-grass-NW",
+        "offset": "0,0"
+    },
+    {
+      "id": "1B",
+      "name": "water-grass-N",
+      "offset": "16,0"
+    },
+    {
+      "id": "1C",
+      "name": "water-grass-NE",
+      "offset": "32,0"
+    },
+    {
+      "id": "1D",
+      "name": "water-grass-TL",
+      "offset": "48,0"
+    },
+    {
+      "id": "1E",
+      "name": "water-grass-TR",
+      "offset": "64,0"
+    },
+
+    {
+      "id": "2A",
+      "name": "water-grass-W",
+      "offset": "0,16"
+    },
+    {
+      "id": "2B",
+      "name": "grass",
+      "offset": "16,16"
+    },
+    {
+      "id": "2C",
+      "name": "water-grass-SE",
+      "offset": "32,16"
+    },
+    {
+      "id": "2D",
+      "name": "water-grass-BL",
+      "offset": "48,16"
+    },
+    {
+      "id": "2E",
+      "name": "water-grass-BR",
+      "offset": "64,16"
+    },
+
+    {
+      "id": "3A",
+      "name": "water-grass-SW",
+      "offset": "0,32"
+    },
+    {
+      "id": "3B",
+      "name": "water-grass-E",
+      "offset": "16,32"
+    },
+    {
+      "id": "3C",
+      "name": "water-grass-SE",
+      "offset": "32,32"
+    },
+    {
+      "id": "3D",
+      "name": "water",
+      "offset": "48,32"
+    },
+    {
+      "id": "3E",
+      "name": "Empty",
+      "offset": "64,32"
+    }
+  ]
+}

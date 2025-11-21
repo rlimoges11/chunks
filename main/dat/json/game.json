@@ -17,10 +17,9 @@
     "music": 0.5
   },
   "camera": {
-    "scale": 5,
-    "targetScale": 1,
-    "minScale": 0.1,
-    "maxScale": 2,
+    "scale": 32,
+    "minScale": 1,
+    "maxScale": 32,
     "moveSpeed": 50
   },
   "chunkSize": 256,
