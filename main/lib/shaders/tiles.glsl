@@ -82,6 +82,20 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     // Get pre-blurred noise from blue channel
     float noise = Texel(texture, local).b * 0.35;
     
+    // Add subtle per-pixel noise (using sub-pixel world position)
+    float screenNoise = rand(world * 10.0) * 0.1 - 0.05; // ±0.05 range
+    
+    // Check if the pixel is water-colored (#4ebcb9 in sRGB)
+    vec3 waterColor = vec3(0.3059, 0.7373, 0.7255); // #4ebcb9 in sRGB
+    float waterThreshold = 0.1; // How close to water color to consider it water
+    vec3 diff = abs(tileColor.rgb - waterColor);
+    bool isWaterPixel = all(lessThan(diff, vec3(waterThreshold)));
+    
+    // Only apply to non-water pixels
+    if (!isWaterPixel) {
+        tileColor.rgb += screenNoise;
+    }
+    
     tileColor.rgb -= noise;
 
     // Apply green channel blend with original texture
