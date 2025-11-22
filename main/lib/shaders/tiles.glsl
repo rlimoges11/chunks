@@ -65,18 +65,36 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     
     // Calculate the final UV coordinates
     vec2 tileOffset = vec2(tileX * u_tile_px, tileY * u_tile_px);
+    
+    // Generate per-tile coordinate for consistent noise
+    vec2 tilePixelPos = floor(world);
+    vec2 withinTile = fract(world);
+    
+    // Generate per-pixel noise based on tile position
+    float pixelNoise = rand(tilePixelPos) * 0.1 - 0.05; // ±0.05 range
+    
+    // Calculate UVs with a small offset to prevent filtering artifacts
     vec2 uv = (tileOffset + pixelInTile) / u_tileset_size;
     
-    // Sample the water tile
+    // Sample the tile with the slightly perturbed UVs
     vec4 tileColor = Texel(u_tileset, uv);
 
     // Get pre-blurred noise from blue channel
-    float noise = Texel(texture, local).b;
-
+    float noise = Texel(texture, local).b * 0.35;
     
+    // Add subtle per-pixel noise based on screen position (persistent but no shearing)
+    float pixelNoise = rand(floor(screen_coords) * 0.1) * 0.1 - 0.05; // ±0.05 range
+    
+    // Only apply noise to non-water tiles
+    if (idx != 13.0) { // Water tile is at index 12 (0-based)
+        tileColor.rgb += vec3(pixelNoise);
+    }
+    
+    tileColor.rgb -= noise;
+
     // Apply green channel blend with original texture
-    float greenValue = Texel(texture, local).g + noise/15;
-    tileColor = mix(tileColor, vec4(greenValue, greenValue, greenValue, 1), 0.3);
+    float greenValue = Texel(texture, local).g + noise;
+    tileColor = mix(tileColor, vec4(greenValue, greenValue, greenValue, 1), 0.45);
 
     return tileColor * color;
 }

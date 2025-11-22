@@ -363,7 +363,7 @@ function engine.init()
     engine.zoom = engine.gameData.camera.scale or 1
     engine.camera:zoomTo(engine.zoom)  -- Apply zoom
 
-    local seed = os.time()
+    local seed = engine.gameData.worldSeed or engine.generateRandomSeed()
     math.randomseed(seed)
     engine.perlin = Perlin:new(seed)
     engine.seedInputText = tostring(seed)
