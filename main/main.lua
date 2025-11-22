@@ -152,10 +152,21 @@ local function chooseTileIndex(wx, wy, nNorm)
 
     -- Function to check if a position is grass (not water)
     local function isGrassAt(x, y)
+        -- Check if position is within the island circle (30 unit radius)
+        local distance = math.sqrt(x*x + y*y)
+        if distance < 60 and distance > 20 then
+            return true  -- Inside island is always grass
+        end
+        
+        -- For positions outside, use the perlin noise
         local nn = normalizeNoise(engine.perlin:octaveNoise(x, y, 4, 0.65))
         return nn < threshold
     end
 
+    -- Get the current position's distance from center
+    local currentDist = math.sqrt(wx*wx + wy*wy)
+    local isOnEdge = currentDist >= 28 and currentDist <= 32  -- Edge band for smoother transition
+    
     -- Check all 8 surrounding positions for grass
     local n = isGrassAt(wx, wy - 1)     -- North
     local s = isGrassAt(wx, wy + 1)     -- South
@@ -165,6 +176,25 @@ local function chooseTileIndex(wx, wy, nNorm)
     local ne = isGrassAt(wx + 1, wy - 1) -- Northeast
     local sw = isGrassAt(wx - 1, wy + 1) -- Southwest
     local se = isGrassAt(wx + 1, wy + 1) -- Southeast
+    
+    -- If we're on the edge of the island, ensure we have proper edge tiles
+    if isOnEdge then
+        -- For edge tiles, ensure they're treated as land for proper edge detection
+        if currentDist < 30 then  -- Inside edge
+            -- Ensure at least one neighbor is water for edge detection
+            if not (n and s and w and e and nw and ne and sw and se) then
+                -- This is an edge tile, so we'll let the normal edge detection handle it
+                n = n or false
+                s = s or false
+                w = w or false
+                e = e or false
+                nw = nw or false
+                ne = ne or false
+                sw = sw or false
+                se = se or false
+            end
+        end
+    end
 
     -- Get the appropriate tile names based on the current preset
     local names = selectTileNameByPreset(engine.tilePreset, n, s, w, e, nw, ne, sw, se)
@@ -257,14 +287,25 @@ function engine.generateCellImage(i, j, size)
             -- Generate base noise for terrain
             local noise = engine.perlin:octaveNoise(wx, wy, 4, 0.65)
             local nNorm = normalizeNoise(noise)
+            local isLand = false
+            
+            -- Apply circular mask (30 unit radius) - only affects red channel (tile selection)
+            local distance = math.sqrt(wx*wx + wy*wy)
+            if distance < 60 and distance > 20 then
+                nNorm = 0.3  -- Force land inside circle (lower value = land, as per chooseTileIndex logic)
+                isLand = true
+            end
             
             -- Generate different noise for variation (using different seed/offset)
             local variationNoise = math.random()
             
+            -- Get pure perlin noise for green channel (ignoring circular mask)
+            local pureNoise = normalizeNoise(engine.perlin:octaveNoise(wx, wy, 4, 0.65))
+            
             -- Store in 1-based index
             noiseData[py+1][px+1] = {
                 r = (chooseTileIndex(wx, wy, nNorm) + 0.5) / count,
-                g = nNorm,
+                g = pureNoise,  -- Use pure perlin noise for green channel
                 b = variationNoise
             }
         end
