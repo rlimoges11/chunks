@@ -82,14 +82,6 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     // Get pre-blurred noise from blue channel
     float noise = Texel(texture, local).b * 0.35;
     
-    // Add subtle per-pixel noise based on screen position (persistent but no shearing)
-    float pixelNoise = rand(floor(screen_coords) * 0.1) * 0.1 - 0.05; // ±0.05 range
-    
-    // Only apply noise to non-water tiles
-    if (idx != 13.0) { // Water tile is at index 12 (0-based)
-        tileColor.rgb += vec3(pixelNoise);
-    }
-    
     tileColor.rgb -= noise;
 
     // Apply green channel blend with original texture
